@@ -136,7 +136,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline-offset: 2px;
 }
 
-/* Phase 1 placeholders */
+/* Phase 1 placeholders (kept for any legacy usage) */
 .grid{
   display:grid;
   grid-template-columns: repeat(12, 1fr);
@@ -151,6 +151,133 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .stat__label{ font-size: 12px; color: var(--muted); }
 .stat__value{ font-size: 22px; font-weight: 850; margin-top: 6px; }
+
+/* Phase 8 – Dashboard stat cards */
+.dash-grid{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.dash-stat{
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.14);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03);
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+.dash-stat:hover{
+  border-color: color-mix(in srgb, var(--dash-accent, var(--accent)) 40%, transparent);
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--dash-accent, var(--accent)) 30%, transparent);
+}
+.dash-stat__icon{
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--dash-accent, var(--accent)) 40%, transparent));
+}
+.dash-stat__body{ min-width: 0; }
+.dash-stat__label{
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.dash-stat__value{
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-top: 4px;
+  color: var(--dash-accent, var(--text));
+}
+.dash-stat__sub{
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Phase 8 – Utilisation bar */
+.util-bar-wrap{
+  background: rgba(0,0,0,0.12);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.util-bar-label{
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.util-bar-track{
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+}
+.util-bar-fill{
+  height: 100%;
+  border-radius: 999px;
+  transition: width 600ms cubic-bezier(.4,0,.2,1);
+}
+
+/* Phase 8 – Dual info panels */
+.dash-panels{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.dash-panel{
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.12);
+  padding: 14px;
+}
+.dash-panel__head{
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+/* Phase 8 – Leaderboard */
+.lb-row{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.lb-row:last-child{ border-bottom: 0; }
+.lb-medal{ font-size: 20px; flex-shrink: 0; }
+.lb-info{ flex: 1; min-width: 0; }
+.lb-title{ font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-author{ font-size: 11px; margin-top: 2px; }
+.lb-count{ white-space: nowrap; flex-shrink: 0; }
+
+/* Phase 8 – Loan feed */
+.feed-row{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.feed-row:last-child{ border-bottom: 0; }
+.feed-info{ flex: 1; min-width: 0; }
+.feed-title{ font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-meta{ font-size: 11px; margin-top: 2px; }
+
+@media (max-width: 760px){
+  .dash-grid{ grid-template-columns: repeat(2, 1fr); }
+  .dash-panels{ grid-template-columns: 1fr; }
+}
 .pill{
   display:inline-flex;
   align-items:center;
