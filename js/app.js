@@ -67,12 +67,47 @@
             </div>
           </div>
 
-          <p class="muted" style="margin-top:14px">
-            Next: Phase 2 builds full <span class="mono">Books</span> CRUD screens.
-          </p>
-          <p class="muted">
-            Active loans: <span class="mono">${activeLoans}</span>
-          </p>
+          <div class="row" style="margin-top:14px">
+            <p class="muted" style="margin:0">
+              Active loans: <span class="mono">${activeLoans}</span>
+            </p>
+            <span class="pill pill--warn">Phase 7: Import/Export backup</span>
+          </div>
+
+          <section class="card" style="margin-top:12px; background: rgba(0,0,0,0.10)">
+            <div class="card__header" style="border-bottom-color: rgba(255,255,255,0.05)">
+              <div>
+                <div class="card__title" style="font-size:16px">Backup</div>
+                <div class="muted" style="margin-top:6px">Export your data to JSON, or import it back later.</div>
+              </div>
+              <div class="toolbar">
+                <button type="button" class="btn btn--primary" data-action="export-db">Export JSON</button>
+              </div>
+            </div>
+            <div class="card__body">
+              <div class="formGrid">
+                <div class="col-6">
+                  <div class="field__label">Import JSON file</div>
+                  <input class="input" type="file" id="importFile" accept="application/json" />
+                  <div class="field__hint">Choose a file exported from this app.</div>
+                </div>
+                <div class="col-3">
+                  <div class="field__label">Mode</div>
+                  <select class="select" id="importMode">
+                    <option value="replace">Replace (overwrite)</option>
+                    <option value="merge">Merge (keep existing)</option>
+                  </select>
+                </div>
+                <div class="col-3">
+                  <div class="field__label">Import</div>
+                  <button type="button" class="btn btn--ghost" data-action="import-db">Import</button>
+                </div>
+              </div>
+              <div class="muted" style="margin-top:10px">
+                Tip: Use Export before big changes, so you can restore easily.
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     `;
@@ -1416,6 +1451,98 @@
     if (route === "books") mountBooks($main);
     if (route === "members") mountMembers($main);
     if (route === "circulation") mountCirculation($main);
+    if (route === "dashboard") mountDashboard($main);
+  }
+
+  function validateDbShape(db) {
+    if (!db || typeof db !== "object") return { ok: false, message: "Invalid JSON (not an object)." };
+    if (db.schemaVersion !== 1) return { ok: false, message: "Unsupported schema version." };
+    if (!Array.isArray(db.books) || !Array.isArray(db.members) || !Array.isArray(db.loans))
+      return { ok: false, message: "Invalid data shape (missing arrays)." };
+    return { ok: true };
+  }
+
+  function downloadJson(filename, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function mergeById(existingArr, incomingArr) {
+    const map = new Map(existingArr.map((x) => [x.id, x]));
+    for (const item of incomingArr) {
+      if (!item || !item.id) continue;
+      if (!map.has(item.id)) map.set(item.id, item);
+    }
+    return Array.from(map.values());
+  }
+
+  function mountDashboard($root) {
+    $root.off("click.dash");
+    $root.on("click.dash", "[data-action='export-db']", function () {
+      const db = window.LMS.storage.readDb();
+      const name = `lms_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      downloadJson(name, db);
+      toast("ok", "Exported", "Backup JSON downloaded.");
+    });
+
+    $root.on("click.dash", "[data-action='import-db']", function () {
+      const fileInput = $("#importFile").get(0);
+      const mode = String($("#importMode").val() || "replace");
+      const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+      if (!file) {
+        toast("bad", "Import failed", "Please choose a JSON file first.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const parsed = JSON.parse(String(reader.result || ""));
+          const v = validateDbShape(parsed);
+          if (!v.ok) {
+            toast("bad", "Import failed", v.message);
+            return;
+          }
+
+          const ok = await confirmDialog({
+            title: "Import backup?",
+            message: mode === "replace" ? "Replace your current data with this backup?" : "Merge this backup into your current data?",
+            okText: "Import",
+            danger: mode === "replace",
+          });
+          if (!ok) return;
+
+          const current = window.LMS.storage.readDb();
+          let next = parsed;
+
+          if (mode === "merge") {
+            next = {
+              ...current,
+              books: mergeById(current.books, parsed.books),
+              members: mergeById(current.members, parsed.members),
+              loans: mergeById(current.loans, parsed.loans),
+              schemaVersion: 1,
+              createdAt: current.createdAt || parsed.createdAt,
+            };
+          }
+
+          window.LMS.storage.writeDb(next);
+          toast("ok", "Imported", mode === "replace" ? "Data replaced from backup." : "Backup merged successfully.");
+          renderCurrent();
+        } catch {
+          toast("bad", "Import failed", "File is not valid JSON.");
+        }
+      };
+      reader.readAsText(file);
+    });
   }
 
   function renderCurrent() {
