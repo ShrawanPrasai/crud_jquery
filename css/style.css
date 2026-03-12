@@ -270,6 +270,32 @@ td .sub{
 .actions{ display:flex; gap: 8px; align-items:center; justify-content: flex-end; }
 .right{ text-align:right; }
 
+/* Phase 5 – search/filter controls */
+.controlRow{
+  display:flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.controlLeft, .controlRight{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+.controlGrow{ flex: 1; min-width: 240px; }
+.kbd{
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(231,236,246,0.92);
+}
+
 @media (max-width: 920px){
   .brand{ min-width: auto; }
   .stat{ grid-column: span 6; }

@@ -6,14 +6,23 @@
       mode: "list", // list | add | edit
       editId: null,
       error: "",
+      q: "",
+      sort: "title_asc",
+      availability: "all", // all | available | out
+      category: "all",
     },
     members: {
       mode: "list", // list | add | edit
       editId: null,
       error: "",
+      q: "",
+      sort: "name_asc",
     },
     circulation: {
       error: "",
+      q: "",
+      filter: "all", // all | overdue
+      sort: "due_asc", // due_asc | due_desc | issued_desc
     },
   };
 
@@ -89,6 +98,15 @@
       .replaceAll("'", "&#039;");
   }
 
+  function norm(s) {
+    return String(s || "").trim().toLowerCase();
+  }
+
+  function includesQ(haystack, q) {
+    if (!q) return true;
+    return norm(haystack).includes(q);
+  }
+
   function bookBorrowedCount(book) {
     const total = Number(book.copiesTotal) || 0;
     const avail = Number(book.copiesAvailable) || 0;
@@ -97,7 +115,29 @@
 
   function renderBooks(db) {
     const state = UI.books;
-    const books = [...db.books].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    const q = norm(state.q);
+    const categories = Array.from(new Set(db.books.map((b) => String(b.category || "").trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+
+    let books = [...db.books];
+
+    if (state.availability === "available") books = books.filter((b) => (Number(b.copiesAvailable) || 0) > 0);
+    if (state.availability === "out") books = books.filter((b) => (Number(b.copiesAvailable) || 0) <= 0);
+    if (state.category !== "all") books = books.filter((b) => String(b.category || "").trim() === state.category);
+
+    books = books.filter((b) => {
+      const blob = `${b.title || ""} ${b.author || ""} ${b.isbn || ""} ${b.category || ""}`;
+      return includesQ(blob, q);
+    });
+
+    const sorters = {
+      title_asc: (a, b) => (a.title || "").localeCompare(b.title || ""),
+      author_asc: (a, b) => (a.author || "").localeCompare(b.author || ""),
+      copies_desc: (a, b) => (Number(b.copiesAvailable) || 0) - (Number(a.copiesAvailable) || 0),
+      newest_desc: (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+    };
+    books.sort(sorters[state.sort] || sorters.title_asc);
     const editing = state.mode === "edit" && state.editId ? db.books.find((b) => b.id === state.editId) : null;
 
     const formBook =
@@ -192,9 +232,47 @@
                 </form>
               `
               : `
-                <div class="row" style="margin-bottom:12px">
-                  <div class="pill pill--ok">Titles: <span class="mono">${books.length}</span></div>
-                  <div class="muted">Tip: Phase 5 will add search, filters and sorting.</div>
+                <div class="controlRow">
+                  <div class="controlLeft">
+                    <div class="pill pill--ok">Showing: <span class="mono">${books.length}</span></div>
+                    <span class="muted">Search with</span> <span class="kbd">Title</span> <span class="muted">/</span> <span class="kbd">Author</span> <span class="muted">/</span> <span class="kbd">ISBN</span>
+                  </div>
+                  <div class="controlRight">
+                    <button type="button" class="btn btn--ghost btn--sm" data-action="books-clear">Clear</button>
+                  </div>
+                </div>
+
+                <div class="formGrid" style="margin-bottom:12px">
+                  <div class="col-6">
+                    <div class="field__label">Search</div>
+                    <input class="input" data-books="q" placeholder="type to search…" value="${escapeHtml(state.q)}" />
+                  </div>
+                  <div class="col-3">
+                    <div class="field__label">Availability</div>
+                    <select class="select" data-books="availability">
+                      <option value="all" ${state.availability === "all" ? "selected" : ""}>All</option>
+                      <option value="available" ${state.availability === "available" ? "selected" : ""}>Available only</option>
+                      <option value="out" ${state.availability === "out" ? "selected" : ""}>Out of stock</option>
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <div class="field__label">Category</div>
+                    <select class="select" data-books="category">
+                      <option value="all" ${state.category === "all" ? "selected" : ""}>All</option>
+                      ${categories
+                        .map((c) => `<option value="${escapeHtml(c)}" ${state.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`)
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <div class="field__label">Sort</div>
+                    <select class="select" data-books="sort">
+                      <option value="title_asc" ${state.sort === "title_asc" ? "selected" : ""}>Title (A→Z)</option>
+                      <option value="author_asc" ${state.sort === "author_asc" ? "selected" : ""}>Author (A→Z)</option>
+                      <option value="copies_desc" ${state.sort === "copies_desc" ? "selected" : ""}>Available (high→low)</option>
+                      <option value="newest_desc" ${state.sort === "newest_desc" ? "selected" : ""}>Newest</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div class="tableWrap">
@@ -261,7 +339,18 @@
 
   function renderMembers(db) {
     const state = UI.members;
-    const members = [...db.members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const q = norm(state.q);
+    let members = [...db.members].filter((m) => {
+      const blob = `${m.name || ""} ${m.code || ""} ${m.email || ""} ${m.phone || ""}`;
+      return includesQ(blob, q);
+    });
+
+    const sorters = {
+      name_asc: (a, b) => (a.name || "").localeCompare(b.name || ""),
+      code_asc: (a, b) => (a.code || "").localeCompare(b.code || ""),
+      newest_desc: (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+    };
+    members.sort(sorters[state.sort] || sorters.name_asc);
     const editing = state.mode === "edit" && state.editId ? db.members.find((m) => m.id === state.editId) : null;
 
     const formMember =
@@ -346,9 +435,33 @@
                 </form>
               `
               : `
-                <div class="row" style="margin-bottom:12px">
-                  <div class="pill pill--ok">Members: <span class="mono">${members.length}</span></div>
-                  <div class="muted">Tip: Phase 5 will add search and filtering.</div>
+                <div class="controlRow">
+                  <div class="controlLeft">
+                    <div class="pill pill--ok">Showing: <span class="mono">${members.length}</span></div>
+                    <span class="muted">Search by</span> <span class="kbd">Name</span> <span class="muted">/</span> <span class="kbd">Code</span> <span class="muted">/</span> <span class="kbd">Email</span>
+                  </div>
+                  <div class="controlRight">
+                    <button type="button" class="btn btn--ghost btn--sm" data-action="members-clear">Clear</button>
+                  </div>
+                </div>
+
+                <div class="formGrid" style="margin-bottom:12px">
+                  <div class="col-6">
+                    <div class="field__label">Search</div>
+                    <input class="input" data-members="q" placeholder="type to search…" value="${escapeHtml(state.q)}" />
+                  </div>
+                  <div class="col-3">
+                    <div class="field__label">Sort</div>
+                    <select class="select" data-members="sort">
+                      <option value="name_asc" ${state.sort === "name_asc" ? "selected" : ""}>Name (A→Z)</option>
+                      <option value="code_asc" ${state.sort === "code_asc" ? "selected" : ""}>Code (A→Z)</option>
+                      <option value="newest_desc" ${state.sort === "newest_desc" ? "selected" : ""}>Newest</option>
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <div class="field__label">Quick actions</div>
+                    <button type="button" class="btn btn--primary btn--sm" data-action="members-add">+ Add member</button>
+                  </div>
                 </div>
 
                 <div class="tableWrap">
@@ -426,7 +539,23 @@
     const books = [...db.books].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
     const members = [...db.members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-    const activeLoans = db.loans.filter((l) => !l.returnedAt);
+    const q = norm(UI.circulation.q);
+    let activeLoans = db.loans.filter((l) => !l.returnedAt);
+    if (UI.circulation.filter === "overdue") activeLoans = activeLoans.filter((l) => isOverdue(l));
+
+    activeLoans = activeLoans.filter((l) => {
+      const member = db.members.find((m) => m.id === l.memberId);
+      const book = db.books.find((b) => b.id === l.bookId);
+      const blob = `${member ? member.name : ""} ${member ? member.code : ""} ${book ? book.title : ""} ${book ? book.author : ""}`;
+      return includesQ(blob, q);
+    });
+
+    const loanSorters = {
+      due_asc: (a, b) => String(a.dueAt || "").localeCompare(String(b.dueAt || "")),
+      due_desc: (a, b) => String(b.dueAt || "").localeCompare(String(a.dueAt || "")),
+      issued_desc: (a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")),
+    };
+    activeLoans.sort(loanSorters[UI.circulation.sort] || loanSorters.due_asc);
     const overdueCount = activeLoans.filter((l) => isOverdue(l)).length;
 
     const noSetup = db.books.length === 0 || db.members.length === 0;
@@ -517,9 +646,36 @@
               `
           }
 
-          <div class="row" style="margin-bottom:10px">
-            <div class="muted">Active loans</div>
-            <button type="button" class="btn btn--ghost btn--sm" data-action="circulation-clear-error">Clear message</button>
+          <div class="controlRow">
+            <div class="controlLeft">
+              <div class="pill pill--warn">Showing: <span class="mono">${activeLoans.length}</span></div>
+              <button type="button" class="btn btn--ghost btn--sm" data-action="circulation-clear-error">Clear message</button>
+            </div>
+            <div class="controlRight">
+              <button type="button" class="btn btn--ghost btn--sm" data-action="circulation-clear">Clear</button>
+            </div>
+          </div>
+
+          <div class="formGrid" style="margin-bottom:12px">
+            <div class="col-6">
+              <div class="field__label">Search</div>
+              <input class="input" data-circ="q" placeholder="member / book…" value="${escapeHtml(UI.circulation.q)}" />
+            </div>
+            <div class="col-3">
+              <div class="field__label">Filter</div>
+              <select class="select" data-circ="filter">
+                <option value="all" ${UI.circulation.filter === "all" ? "selected" : ""}>All active</option>
+                <option value="overdue" ${UI.circulation.filter === "overdue" ? "selected" : ""}>Overdue only</option>
+              </select>
+            </div>
+            <div class="col-3">
+              <div class="field__label">Sort</div>
+              <select class="select" data-circ="sort">
+                <option value="due_asc" ${UI.circulation.sort === "due_asc" ? "selected" : ""}>Due date (soonest)</option>
+                <option value="due_desc" ${UI.circulation.sort === "due_desc" ? "selected" : ""}>Due date (latest)</option>
+                <option value="issued_desc" ${UI.circulation.sort === "issued_desc" ? "selected" : ""}>Issued (newest)</option>
+              </select>
+            </div>
           </div>
 
           <div class="tableWrap">
@@ -539,8 +695,6 @@
                   activeLoans.length === 0
                     ? `<tr><td colspan="6" class="muted">No active loans.</td></tr>`
                     : activeLoans
-                        .slice()
-                        .sort((a, b) => String(a.dueAt || "").localeCompare(String(b.dueAt || "")))
                         .map((l) => {
                           const member = db.members.find((m) => m.id === l.memberId);
                           const book = db.books.find((b) => b.id === l.bookId);
@@ -577,7 +731,7 @@
           </div>
 
           <p class="muted" style="margin-top:12px">
-            Phase 5 will add search/filtering and show full loan history.
+            Phase 6 will improve UX (toasts, confirmations, inline validation). Phase 7 adds import/export backup.
           </p>
         </div>
       </section>
@@ -820,6 +974,24 @@
         renderCurrent();
       }
     });
+
+    $root.on("input.books change.books", "[data-books]", function () {
+      const key = String($(this).data("books"));
+      const val = String($(this).val() ?? "");
+      if (key === "q") UI.books.q = val;
+      if (key === "availability") UI.books.availability = val;
+      if (key === "category") UI.books.category = val;
+      if (key === "sort") UI.books.sort = val;
+      renderCurrent();
+    });
+
+    $root.on("click.books", "[data-action='books-clear']", function () {
+      UI.books.q = "";
+      UI.books.availability = "all";
+      UI.books.category = "all";
+      UI.books.sort = "title_asc";
+      renderCurrent();
+    });
   }
 
   function mountMembers($root) {
@@ -924,6 +1096,20 @@
         renderCurrent();
       }
     });
+
+    $root.on("input.members change.members", "[data-members]", function () {
+      const key = String($(this).data("members"));
+      const val = String($(this).val() ?? "");
+      if (key === "q") UI.members.q = val;
+      if (key === "sort") UI.members.sort = val;
+      renderCurrent();
+    });
+
+    $root.on("click.members", "[data-action='members-clear']", function () {
+      UI.members.q = "";
+      UI.members.sort = "name_asc";
+      renderCurrent();
+    });
   }
 
   function circulationSetError(msg) {
@@ -936,6 +1122,22 @@
 
     $root.on("click.circ", "[data-action='circulation-clear-error']", function () {
       circulationSetError("");
+      renderCurrent();
+    });
+
+    $root.on("input.circ change.circ", "[data-circ]", function () {
+      const key = String($(this).data("circ"));
+      const val = String($(this).val() ?? "");
+      if (key === "q") UI.circulation.q = val;
+      if (key === "filter") UI.circulation.filter = val;
+      if (key === "sort") UI.circulation.sort = val;
+      renderCurrent();
+    });
+
+    $root.on("click.circ", "[data-action='circulation-clear']", function () {
+      UI.circulation.q = "";
+      UI.circulation.filter = "all";
+      UI.circulation.sort = "due_asc";
       renderCurrent();
     });
 
