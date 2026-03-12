@@ -12,6 +12,9 @@
       editId: null,
       error: "",
     },
+    circulation: {
+      error: "",
+    },
   };
 
   function setActiveRoute(route) {
@@ -401,6 +404,186 @@
     `;
   }
 
+  function isoToYmd(iso) {
+    if (!iso) return "";
+    return String(iso).slice(0, 10);
+  }
+
+  function addDaysYmd(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function isOverdue(loan) {
+    if (!loan || loan.returnedAt) return false;
+    const due = new Date(loan.dueAt);
+    return Number.isFinite(due.getTime()) && due.getTime() < Date.now();
+  }
+
+  function renderCirculation(db) {
+    const err = UI.circulation.error;
+    const books = [...db.books].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    const members = [...db.members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    const activeLoans = db.loans.filter((l) => !l.returnedAt);
+    const overdueCount = activeLoans.filter((l) => isOverdue(l)).length;
+
+    const noSetup = db.books.length === 0 || db.members.length === 0;
+
+    const bookOptions = books
+      .map((b) => {
+        const avail = Number(b.copiesAvailable) || 0;
+        const disabled = avail <= 0 ? "disabled" : "";
+        return `<option value="${escapeHtml(b.id)}" ${disabled}>${escapeHtml(b.title)} — ${escapeHtml(
+          b.author
+        )} (avail: ${avail})</option>`;
+      })
+      .join("");
+
+    const memberOptions = members
+      .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)} (${escapeHtml(m.code)})</option>`)
+      .join("");
+
+    return `
+      <section class="card" id="circulationScreen">
+        <div class="card__header">
+          <div>
+            <h1 class="card__title">Circulation</h1>
+            <div class="muted" style="margin-top:6px">Issue and return books. Tracks active + overdue loans.</div>
+          </div>
+          <div class="toolbar">
+            <span class="pill ${overdueCount > 0 ? "pill--bad" : "pill--ok"}">Overdue: <span class="mono">${overdueCount}</span></span>
+            <span class="pill pill--warn">Active loans: <span class="mono">${activeLoans.length}</span></span>
+          </div>
+        </div>
+
+        <div class="card__body">
+          ${err ? `<div class="error" role="alert" style="margin-bottom:12px">${escapeHtml(err)}</div>` : ""}
+
+          ${
+            noSetup
+              ? `
+                <div class="error" role="alert">
+                  You need at least <strong>1 book</strong> and <strong>1 member</strong> before issuing.
+                  Go to <span class="mono">Books</span> and <span class="mono">Members</span> tabs first.
+                </div>
+              `
+              : `
+                <section class="card" style="margin-bottom:14px; background: rgba(0,0,0,0.10)">
+                  <div class="card__header" style="border-bottom-color: rgba(255,255,255,0.05)">
+                    <div>
+                      <div class="card__title" style="font-size:16px">Issue a book</div>
+                      <div class="muted" style="margin-top:6px">Creates a loan and decreases available copies.</div>
+                    </div>
+                  </div>
+                  <div class="card__body">
+                    <form id="issueForm" autocomplete="off">
+                      <div class="formGrid">
+                        <div class="col-6">
+                          <div class="field__label">Member *</div>
+                          <select class="select" name="memberId">
+                            <option value="">Select member…</option>
+                            ${memberOptions}
+                          </select>
+                        </div>
+                        <div class="col-6">
+                          <div class="field__label">Book (only available shown) *</div>
+                          <select class="select" name="bookId">
+                            <option value="">Select book…</option>
+                            ${bookOptions}
+                          </select>
+                        </div>
+                        <div class="col-4">
+                          <div class="field__label">Due date *</div>
+                          <input class="input" type="date" name="dueYmd" value="${escapeHtml(addDaysYmd(14))}" />
+                        </div>
+                        <div class="col-8">
+                          <div class="field__label">Note</div>
+                          <input class="input" name="note" placeholder="optional" />
+                        </div>
+                        <div class="col-12">
+                          <div class="row">
+                            <div class="muted">Rule: cannot issue if available copies = 0.</div>
+                            <div class="toolbar">
+                              <button type="submit" class="btn btn--primary">Issue</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </section>
+              `
+          }
+
+          <div class="row" style="margin-bottom:10px">
+            <div class="muted">Active loans</div>
+            <button type="button" class="btn btn--ghost btn--sm" data-action="circulation-clear-error">Clear message</button>
+          </div>
+
+          <div class="tableWrap">
+            <table aria-label="Loans table" style="min-width: 980px">
+              <thead>
+                <tr>
+                  <th style="min-width:210px">Member</th>
+                  <th style="min-width:320px">Book</th>
+                  <th style="min-width:140px">Issued</th>
+                  <th style="min-width:140px">Due</th>
+                  <th style="min-width:140px">Status</th>
+                  <th class="right" style="min-width:180px">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  activeLoans.length === 0
+                    ? `<tr><td colspan="6" class="muted">No active loans.</td></tr>`
+                    : activeLoans
+                        .slice()
+                        .sort((a, b) => String(a.dueAt || "").localeCompare(String(b.dueAt || "")))
+                        .map((l) => {
+                          const member = db.members.find((m) => m.id === l.memberId);
+                          const book = db.books.find((b) => b.id === l.bookId);
+                          const overdue = isOverdue(l);
+                          return `
+                            <tr>
+                              <td>
+                                ${escapeHtml(member ? member.name : "Unknown")}
+                                <span class="sub">${escapeHtml(member ? member.code : "")}</span>
+                              </td>
+                              <td>
+                                ${escapeHtml(book ? book.title : "Unknown")}
+                                <span class="sub">${escapeHtml(book ? book.author : "")}</span>
+                              </td>
+                              <td class="mono">${escapeHtml(isoToYmd(l.issuedAt))}</td>
+                              <td class="mono">${escapeHtml(isoToYmd(l.dueAt))}</td>
+                              <td>
+                                <span class="pill ${overdue ? "pill--bad" : "pill--ok"}">${overdue ? "Overdue" : "Active"}</span>
+                              </td>
+                              <td class="right">
+                                <div class="actions">
+                                  <button type="button" class="btn btn--sm btn--primary" data-action="loan-return" data-id="${escapeHtml(
+                                    l.id
+                                  )}">Return</button>
+                                </div>
+                              </td>
+                            </tr>
+                          `;
+                        })
+                        .join("")
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <p class="muted" style="margin-top:12px">
+            Phase 5 will add search/filtering and show full loan history.
+          </p>
+        </div>
+      </section>
+    `;
+  }
+
   function booksSetError(msg) {
     UI.books.error = msg || "";
   }
@@ -743,12 +926,115 @@
     });
   }
 
+  function circulationSetError(msg) {
+    UI.circulation.error = msg || "";
+  }
+
+  function mountCirculation($root) {
+    $root.off("click.circ");
+    $root.off("submit.circ");
+
+    $root.on("click.circ", "[data-action='circulation-clear-error']", function () {
+      circulationSetError("");
+      renderCurrent();
+    });
+
+    $root.on("submit.circ", "#issueForm", function (e) {
+      e.preventDefault();
+      const db = window.LMS.storage.readDb();
+      const $form = $(this);
+      const memberId = String($form.find("[name='memberId']").val() || "");
+      const bookId = String($form.find("[name='bookId']").val() || "");
+      const dueYmd = String($form.find("[name='dueYmd']").val() || "");
+      const note = String($form.find("[name='note']").val() || "").trim();
+
+      const member = db.members.find((m) => m.id === memberId);
+      if (!member) {
+        circulationSetError("Please select a member.");
+        renderCurrent();
+        return;
+      }
+
+      const bookIdx = db.books.findIndex((b) => b.id === bookId);
+      if (bookIdx === -1) {
+        circulationSetError("Please select a book.");
+        renderCurrent();
+        return;
+      }
+
+      const book = db.books[bookIdx];
+      const avail = Number(book.copiesAvailable) || 0;
+      if (avail <= 0) {
+        circulationSetError("This book is not available right now.");
+        renderCurrent();
+        return;
+      }
+
+      const dueAt = new Date(`${dueYmd}T23:59:59.000Z`).toISOString();
+      if (!dueYmd || Number.isNaN(new Date(dueAt).getTime())) {
+        circulationSetError("Please choose a valid due date.");
+        renderCurrent();
+        return;
+      }
+
+      const loan = {
+        id: window.LMS.storage.uid("loan"),
+        memberId,
+        bookId,
+        issuedAt: new Date().toISOString(),
+        dueAt,
+        returnedAt: null,
+        note,
+      };
+
+      db.loans.push(loan);
+      db.books[bookIdx] = {
+        ...book,
+        copiesAvailable: Math.max(0, avail - 1),
+        updatedAt: new Date().toISOString(),
+      };
+
+      window.LMS.storage.writeDb(db);
+      circulationSetError("");
+      renderCurrent();
+    });
+
+    $root.on("click.circ", "[data-action='loan-return']", function () {
+      const loanId = String($(this).data("id") || "");
+      const db = window.LMS.storage.readDb();
+      const loanIdx = db.loans.findIndex((l) => l.id === loanId);
+      if (loanIdx === -1) return;
+      const loan = db.loans[loanIdx];
+      if (loan.returnedAt) return;
+
+      const bookIdx = db.books.findIndex((b) => b.id === loan.bookId);
+      if (bookIdx !== -1) {
+        const book = db.books[bookIdx];
+        const total = Number(book.copiesTotal) || 0;
+        const avail = Number(book.copiesAvailable) || 0;
+        db.books[bookIdx] = {
+          ...book,
+          copiesAvailable: Math.min(total, avail + 1),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      db.loans[loanIdx] = {
+        ...loan,
+        returnedAt: new Date().toISOString(),
+      };
+
+      window.LMS.storage.writeDb(db);
+      circulationSetError("");
+      renderCurrent();
+    });
+  }
+
   function renderRoute(route, db) {
     if (route === "dashboard") return renderDashboard(db);
     if (route === "books") return renderBooks(db);
     if (route === "members") return renderMembers(db);
-    if (route === "circulation")
-      return renderPlaceholder("Circulation", "Phase 4: issue/return books and track active/overdue loans.");
+    if (route === "circulation") return renderCirculation(db);
     return renderPlaceholder("Not found", "Unknown route.");
   }
 
@@ -771,6 +1057,7 @@
     const $main = $("#appMain");
     if (route === "books") mountBooks($main);
     if (route === "members") mountMembers($main);
+    if (route === "circulation") mountCirculation($main);
   }
 
   function renderCurrent() {
