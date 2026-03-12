@@ -6,6 +6,7 @@
       mode: "list", // list | add | edit
       editId: null,
       error: "",
+      fieldErrors: {},
       q: "",
       sort: "title_asc",
       availability: "all", // all | available | out
@@ -15,11 +16,13 @@
       mode: "list", // list | add | edit
       editId: null,
       error: "",
+      fieldErrors: {},
       q: "",
       sort: "name_asc",
     },
     circulation: {
       error: "",
+      fieldErrors: {},
       q: "",
       filter: "all", // all | overdue
       sort: "due_asc", // due_asc | due_desc | issued_desc
@@ -98,6 +101,77 @@
       .replaceAll("'", "&#039;");
   }
 
+  function toast(type, title, msg) {
+    const $host = $("#toastHost");
+    if ($host.length === 0) return;
+    const cls = type === "ok" ? "toast--ok" : type === "warn" ? "toast--warn" : "toast--bad";
+    const $t = $(`
+      <div class="toast ${cls}" role="status">
+        <div class="toast__title"></div>
+        <div class="toast__msg"></div>
+      </div>
+    `);
+    $t.find(".toast__title").text(title || "");
+    $t.find(".toast__msg").text(msg || "");
+    $host.append($t);
+    window.setTimeout(() => {
+      $t.fadeOut(160, () => $t.remove());
+    }, 2600);
+  }
+
+  function confirmDialog({ title, message, okText, danger } = {}) {
+    const $host = $("#modalHost");
+    if ($host.length === 0) {
+      return Promise.resolve(window.confirm(message || "Are you sure?"));
+    }
+
+    const $ok = $("#modalOkBtn");
+    const $cancel = $("#modalCancelBtn");
+
+    $("#modalTitle").text(title || "Confirm");
+    $("#modalDesc").text(message || "Are you sure?");
+    $ok.text(okText || "Confirm");
+    $ok.toggleClass("btn--danger", Boolean(danger));
+    $ok.toggleClass("btn--primary", !danger);
+
+    $host.removeClass("is-hidden").attr("aria-hidden", "false");
+
+    return new Promise((resolve) => {
+      let done = false;
+      function finish(v) {
+        if (done) return;
+        done = true;
+        $host.addClass("is-hidden").attr("aria-hidden", "true");
+        $host.off("click.modal keydown.modal");
+        $ok.off("click.modal");
+        $cancel.off("click.modal");
+        resolve(v);
+      }
+
+      $ok.on("click.modal", () => finish(true));
+      $cancel.on("click.modal", () => finish(false));
+      $host.on("click.modal", "[data-action='modal-close']", () => finish(false));
+      $host.on("keydown.modal", (e) => {
+        if (e.key === "Escape") finish(false);
+      });
+
+      // Focus the safer option first
+      window.setTimeout(() => $cancel.trigger("focus"), 0);
+    });
+  }
+
+  function firstKey(obj) {
+    if (!obj) return null;
+    const keys = Object.keys(obj);
+    return keys.length ? keys[0] : null;
+  }
+
+  function renderFieldError(errors, key) {
+    const msg = errors && errors[key] ? String(errors[key]) : "";
+    if (!msg) return "";
+    return `<div class="fieldError" role="alert">${escapeHtml(msg)}</div>`;
+  }
+
   function norm(s) {
     return String(s || "").trim().toLowerCase();
   }
@@ -147,6 +221,7 @@
 
     const showForm = state.mode === "add" || state.mode === "edit";
     const borrowed = editing ? bookBorrowedCount(editing) : 0;
+    const fe = state.fieldErrors || {};
 
     return `
       <section class="card" id="booksScreen">
@@ -182,32 +257,36 @@
                   <div class="formGrid">
                     <div class="col-6">
                       <div class="field__label">Title *</div>
-                      <input class="input" name="title" placeholder="e.g. Atomic Habits" value="${escapeHtml(
+                      <input class="input ${fe.title ? "is-invalid" : ""}" name="title" placeholder="e.g. Atomic Habits" value="${escapeHtml(
                         formBook.title
                       )}" />
+                      ${renderFieldError(fe, "title")}
                     </div>
                     <div class="col-6">
                       <div class="field__label">Author *</div>
-                      <input class="input" name="author" placeholder="e.g. James Clear" value="${escapeHtml(
+                      <input class="input ${fe.author ? "is-invalid" : ""}" name="author" placeholder="e.g. James Clear" value="${escapeHtml(
                         formBook.author
                       )}" />
+                      ${renderFieldError(fe, "author")}
                     </div>
                     <div class="col-6">
                       <div class="field__label">ISBN *</div>
-                      <input class="input" name="isbn" placeholder="numbers only (no spaces)" value="${escapeHtml(
+                      <input class="input ${fe.isbn ? "is-invalid" : ""}" name="isbn" placeholder="numbers only (no spaces)" value="${escapeHtml(
                         formBook.isbn
                       )}" ${state.mode === "edit" ? `data-original-isbn="${escapeHtml(formBook.isbn)}"` : ""} />
                       <div class="field__hint">Must be unique.</div>
+                      ${renderFieldError(fe, "isbn")}
                     </div>
                     <div class="col-3">
                       <div class="field__label">Category *</div>
-                      <input class="input" name="category" placeholder="e.g. Programming" value="${escapeHtml(
+                      <input class="input ${fe.category ? "is-invalid" : ""}" name="category" placeholder="e.g. Programming" value="${escapeHtml(
                         formBook.category
                       )}" />
+                      ${renderFieldError(fe, "category")}
                     </div>
                     <div class="col-3">
                       <div class="field__label">Total copies *</div>
-                      <input class="input" name="copiesTotal" inputmode="numeric" placeholder="e.g. 3" value="${escapeHtml(
+                      <input class="input ${fe.copiesTotal ? "is-invalid" : ""}" name="copiesTotal" inputmode="numeric" placeholder="e.g. 3" value="${escapeHtml(
                         formBook.copiesTotal
                       )}" />
                       ${
@@ -215,6 +294,7 @@
                           ? `<div class="field__hint">Borrowed now: <span class="mono">${borrowed}</span></div>`
                           : ""
                       }
+                      ${renderFieldError(fe, "copiesTotal")}
                     </div>
 
                     <div class="col-12">
@@ -359,6 +439,7 @@
         : editing || { name: "", code: "", email: "", phone: "" };
 
     const showForm = state.mode === "add" || state.mode === "edit";
+    const fe = state.fieldErrors || {};
 
     return `
       <section class="card" id="membersScreen">
@@ -394,12 +475,18 @@
                   <div class="formGrid">
                     <div class="col-6">
                       <div class="field__label">Full name *</div>
-                      <input class="input" name="name" placeholder="e.g. Sita Karki" value="${escapeHtml(formMember.name)}" />
+                      <input class="input ${fe.name ? "is-invalid" : ""}" name="name" placeholder="e.g. Sita Karki" value="${escapeHtml(
+                        formMember.name
+                      )}" />
+                      ${renderFieldError(fe, "name")}
                     </div>
                     <div class="col-3">
                       <div class="field__label">Member code *</div>
-                      <input class="input" name="code" placeholder="e.g. M-1003" value="${escapeHtml(formMember.code)}" />
+                      <input class="input ${fe.code ? "is-invalid" : ""}" name="code" placeholder="e.g. M-1003" value="${escapeHtml(
+                        formMember.code
+                      )}" />
                       <div class="field__hint">Must be unique.</div>
+                      ${renderFieldError(fe, "code")}
                     </div>
                     <div class="col-3">
                       <div class="field__label">Phone</div>
@@ -410,10 +497,11 @@
 
                     <div class="col-6">
                       <div class="field__label">Email *</div>
-                      <input class="input" name="email" inputmode="email" placeholder="e.g. user@example.com" value="${escapeHtml(
+                      <input class="input ${fe.email ? "is-invalid" : ""}" name="email" inputmode="email" placeholder="e.g. user@example.com" value="${escapeHtml(
                         formMember.email
                       )}" />
                       <div class="field__hint">Must be unique.</div>
+                      ${renderFieldError(fe, "email")}
                     </div>
                     <div class="col-6">
                       <div class="field__label">Notes</div>
@@ -559,6 +647,7 @@
     const overdueCount = activeLoans.filter((l) => isOverdue(l)).length;
 
     const noSetup = db.books.length === 0 || db.members.length === 0;
+    const fe = UI.circulation.fieldErrors || {};
 
     const bookOptions = books
       .map((b) => {
@@ -611,21 +700,26 @@
                       <div class="formGrid">
                         <div class="col-6">
                           <div class="field__label">Member *</div>
-                          <select class="select" name="memberId">
+                          <select class="select ${fe.memberId ? "is-invalid" : ""}" name="memberId">
                             <option value="">Select member…</option>
                             ${memberOptions}
                           </select>
+                          ${renderFieldError(fe, "memberId")}
                         </div>
                         <div class="col-6">
                           <div class="field__label">Book (only available shown) *</div>
-                          <select class="select" name="bookId">
+                          <select class="select ${fe.bookId ? "is-invalid" : ""}" name="bookId">
                             <option value="">Select book…</option>
                             ${bookOptions}
                           </select>
+                          ${renderFieldError(fe, "bookId")}
                         </div>
                         <div class="col-4">
                           <div class="field__label">Due date *</div>
-                          <input class="input" type="date" name="dueYmd" value="${escapeHtml(addDaysYmd(14))}" />
+                          <input class="input ${fe.dueYmd ? "is-invalid" : ""}" type="date" name="dueYmd" value="${escapeHtml(
+                            addDaysYmd(14)
+                          )}" />
+                          ${renderFieldError(fe, "dueYmd")}
                         </div>
                         <div class="col-8">
                           <div class="field__label">Note</div>
@@ -746,12 +840,14 @@
     UI.books.mode = "list";
     UI.books.editId = null;
     booksSetError("");
+    UI.books.fieldErrors = {};
   }
 
   function booksGoAdd() {
     UI.books.mode = "add";
     UI.books.editId = null;
     booksSetError("");
+    UI.books.fieldErrors = {};
   }
 
   function booksGoEdit(bookId, db) {
@@ -764,6 +860,7 @@
     UI.books.mode = "edit";
     UI.books.editId = found.id;
     booksSetError("");
+    UI.books.fieldErrors = {};
   }
 
   function membersSetError(msg) {
@@ -774,12 +871,14 @@
     UI.members.mode = "list";
     UI.members.editId = null;
     membersSetError("");
+    UI.members.fieldErrors = {};
   }
 
   function membersGoAdd() {
     UI.members.mode = "add";
     UI.members.editId = null;
     membersSetError("");
+    UI.members.fieldErrors = {};
   }
 
   function membersGoEdit(memberId, db) {
@@ -792,6 +891,7 @@
     UI.members.mode = "edit";
     UI.members.editId = found.id;
     membersSetError("");
+    UI.members.fieldErrors = {};
   }
 
   function normalizeIsbn(isbnRaw) {
@@ -809,53 +909,57 @@
   }
 
   function validateBookInput(input, db, { mode, editId }) {
+    const fieldErrors = {};
     const title = String(input.title || "").trim();
     const author = String(input.author || "").trim();
     const isbn = normalizeIsbn(input.isbn);
     const category = String(input.category || "").trim();
     const copiesTotal = Number(String(input.copiesTotal || "").trim());
 
-    if (!title) return { ok: false, message: "Title is required." };
-    if (!author) return { ok: false, message: "Author is required." };
-    if (!isbn) return { ok: false, message: "ISBN is required." };
-    if (!/^[0-9Xx-]+$/.test(isbn)) return { ok: false, message: "ISBN should contain only digits (optionally X or -)." };
-    if (!category) return { ok: false, message: "Category is required." };
+    if (!title) fieldErrors.title = "Title is required.";
+    if (!author) fieldErrors.author = "Author is required.";
+    if (!isbn) fieldErrors.isbn = "ISBN is required.";
+    if (isbn && !/^[0-9Xx-]+$/.test(isbn)) fieldErrors.isbn = "ISBN should contain only digits (optionally X or -).";
+    if (!category) fieldErrors.category = "Category is required.";
     if (!Number.isFinite(copiesTotal) || !Number.isInteger(copiesTotal) || copiesTotal <= 0)
-      return { ok: false, message: "Total copies must be a positive whole number." };
+      fieldErrors.copiesTotal = "Total copies must be a positive whole number.";
+    if (Object.keys(fieldErrors).length) return { ok: false, message: "Please fix the highlighted fields.", fieldErrors };
 
     const isbnTaken = db.books.some((b) => {
       if (mode === "edit" && b.id === editId) return false;
       return normalizeIsbn(b.isbn) === isbn;
     });
-    if (isbnTaken) return { ok: false, message: "ISBN already exists. Use a unique ISBN." };
+    if (isbnTaken) return { ok: false, message: "ISBN already exists. Use a unique ISBN.", fieldErrors: { isbn: "ISBN already exists." } };
 
-    return { ok: true, value: { title, author, isbn, category, copiesTotal } };
+    return { ok: true, value: { title, author, isbn, category, copiesTotal }, fieldErrors: {} };
   }
 
   function validateMemberInput(input, db, { mode, editId }) {
+    const fieldErrors = {};
     const name = String(input.name || "").trim();
     const code = normalizeMemberCode(input.code);
     const email = normalizeEmail(input.email);
     const phone = String(input.phone || "").trim();
 
-    if (!name) return { ok: false, message: "Full name is required." };
-    if (!code) return { ok: false, message: "Member code is required." };
-    if (!email) return { ok: false, message: "Email is required." };
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: "Please enter a valid email address." };
+    if (!name) fieldErrors.name = "Full name is required.";
+    if (!code) fieldErrors.code = "Member code is required.";
+    if (!email) fieldErrors.email = "Email is required.";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.email = "Please enter a valid email address.";
+    if (Object.keys(fieldErrors).length) return { ok: false, message: "Please fix the highlighted fields.", fieldErrors };
 
     const codeTaken = db.members.some((m) => {
       if (mode === "edit" && m.id === editId) return false;
       return normalizeMemberCode(m.code) === code;
     });
-    if (codeTaken) return { ok: false, message: "Member code already exists. Use a unique code." };
+    if (codeTaken) return { ok: false, message: "Member code already exists. Use a unique code.", fieldErrors: { code: "Member code already exists." } };
 
     const emailTaken = db.members.some((m) => {
       if (mode === "edit" && m.id === editId) return false;
       return normalizeEmail(m.email) === email;
     });
-    if (emailTaken) return { ok: false, message: "Email already exists. Use a unique email." };
+    if (emailTaken) return { ok: false, message: "Email already exists. Use a unique email.", fieldErrors: { email: "Email already exists." } };
 
-    return { ok: true, value: { name, code, email, phone } };
+    return { ok: true, value: { name, code, email, phone }, fieldErrors: {} };
   }
 
   function mountBooks($root) {
@@ -893,11 +997,19 @@
         return;
       }
 
-      if (!window.confirm(`Delete "${book.title}"?`)) return;
-      db.books = db.books.filter((b) => b.id !== id);
-      window.LMS.storage.writeDb(db);
-      booksGoList();
-      renderCurrent();
+      confirmDialog({
+        title: "Delete book?",
+        message: `Delete "${book.title}"? This cannot be undone.`,
+        okText: "Delete",
+        danger: true,
+      }).then((ok) => {
+        if (!ok) return;
+        db.books = db.books.filter((b) => b.id !== id);
+        window.LMS.storage.writeDb(db);
+        toast("ok", "Deleted", "Book removed.");
+        booksGoList();
+        renderCurrent();
+      });
     });
 
     $root.on("submit.books", "#bookForm", function (e) {
@@ -916,12 +1028,17 @@
       const editId = UI.books.editId;
       const v = validateBookInput(raw, db, { mode, editId });
       if (!v.ok) {
+        UI.books.fieldErrors = v.fieldErrors || {};
         booksSetError(v.message);
+        toast("bad", "Fix errors", v.message);
         renderCurrent();
+        const k = firstKey(UI.books.fieldErrors);
+        if (k) window.setTimeout(() => $root.find(`[name='${k}']`).trigger("focus"), 0);
         return;
       }
 
       booksSetError("");
+      UI.books.fieldErrors = {};
 
       if (mode === "add") {
         const book = {
@@ -937,6 +1054,7 @@
         };
         db.books.push(book);
         window.LMS.storage.writeDb(db);
+        toast("ok", "Book added", `"${book.title}" created.`);
         booksGoList();
         renderCurrent();
         return;
@@ -953,7 +1071,9 @@
         const existing = db.books[idx];
         const borrowed = bookBorrowedCount(existing);
         if (v.value.copiesTotal < borrowed) {
+          UI.books.fieldErrors = { copiesTotal: `Cannot be less than borrowed (${borrowed}).` };
           booksSetError(`Total copies cannot be less than borrowed (${borrowed}).`);
+          toast("bad", "Fix errors", "Total copies is too low.");
           renderCurrent();
           return;
         }
@@ -970,6 +1090,7 @@
           updatedAt: new Date().toISOString(),
         };
         window.LMS.storage.writeDb(db);
+        toast("ok", "Saved", "Book updated.");
         booksGoList();
         renderCurrent();
       }
@@ -1028,11 +1149,19 @@
         return;
       }
 
-      if (!window.confirm(`Delete member "${member.name}"?`)) return;
-      db.members = db.members.filter((m) => m.id !== id);
-      window.LMS.storage.writeDb(db);
-      membersGoList();
-      renderCurrent();
+      confirmDialog({
+        title: "Delete member?",
+        message: `Delete "${member.name}"? This cannot be undone.`,
+        okText: "Delete",
+        danger: true,
+      }).then((ok) => {
+        if (!ok) return;
+        db.members = db.members.filter((m) => m.id !== id);
+        window.LMS.storage.writeDb(db);
+        toast("ok", "Deleted", "Member removed.");
+        membersGoList();
+        renderCurrent();
+      });
     });
 
     $root.on("submit.members", "#memberForm", function (e) {
@@ -1050,12 +1179,17 @@
       const editId = UI.members.editId;
       const v = validateMemberInput(raw, db, { mode, editId });
       if (!v.ok) {
+        UI.members.fieldErrors = v.fieldErrors || {};
         membersSetError(v.message);
+        toast("bad", "Fix errors", v.message);
         renderCurrent();
+        const k = firstKey(UI.members.fieldErrors);
+        if (k) window.setTimeout(() => $root.find(`[name='${k}']`).trigger("focus"), 0);
         return;
       }
 
       membersSetError("");
+      UI.members.fieldErrors = {};
 
       if (mode === "add") {
         const member = {
@@ -1069,6 +1203,7 @@
         };
         db.members.push(member);
         window.LMS.storage.writeDb(db);
+        toast("ok", "Member added", `"${member.name}" created.`);
         membersGoList();
         renderCurrent();
         return;
@@ -1092,6 +1227,7 @@
           updatedAt: new Date().toISOString(),
         };
         window.LMS.storage.writeDb(db);
+        toast("ok", "Saved", "Member updated.");
         membersGoList();
         renderCurrent();
       }
@@ -1150,16 +1286,21 @@
       const dueYmd = String($form.find("[name='dueYmd']").val() || "");
       const note = String($form.find("[name='note']").val() || "").trim();
 
+      UI.circulation.fieldErrors = {};
       const member = db.members.find((m) => m.id === memberId);
       if (!member) {
+        UI.circulation.fieldErrors.memberId = "Select a member.";
         circulationSetError("Please select a member.");
+        toast("bad", "Fix errors", "Member is required.");
         renderCurrent();
         return;
       }
 
       const bookIdx = db.books.findIndex((b) => b.id === bookId);
       if (bookIdx === -1) {
+        UI.circulation.fieldErrors.bookId = "Select a book.";
         circulationSetError("Please select a book.");
+        toast("bad", "Fix errors", "Book is required.");
         renderCurrent();
         return;
       }
@@ -1167,14 +1308,18 @@
       const book = db.books[bookIdx];
       const avail = Number(book.copiesAvailable) || 0;
       if (avail <= 0) {
+        UI.circulation.fieldErrors.bookId = "No available copies.";
         circulationSetError("This book is not available right now.");
+        toast("bad", "Not available", "No available copies for this book.");
         renderCurrent();
         return;
       }
 
       const dueAt = new Date(`${dueYmd}T23:59:59.000Z`).toISOString();
       if (!dueYmd || Number.isNaN(new Date(dueAt).getTime())) {
+        UI.circulation.fieldErrors.dueYmd = "Choose a valid due date.";
         circulationSetError("Please choose a valid due date.");
+        toast("bad", "Fix errors", "Due date is required.");
         renderCurrent();
         return;
       }
@@ -1198,6 +1343,8 @@
 
       window.LMS.storage.writeDb(db);
       circulationSetError("");
+      UI.circulation.fieldErrors = {};
+      toast("ok", "Issued", "Loan created and availability updated.");
       renderCurrent();
     });
 
@@ -1209,26 +1356,35 @@
       const loan = db.loans[loanIdx];
       if (loan.returnedAt) return;
 
-      const bookIdx = db.books.findIndex((b) => b.id === loan.bookId);
-      if (bookIdx !== -1) {
-        const book = db.books[bookIdx];
-        const total = Number(book.copiesTotal) || 0;
-        const avail = Number(book.copiesAvailable) || 0;
-        db.books[bookIdx] = {
-          ...book,
-          copiesAvailable: Math.min(total, avail + 1),
-          updatedAt: new Date().toISOString(),
+      confirmDialog({
+        title: "Return book?",
+        message: "Mark this loan as returned and increase available copies?",
+        okText: "Return",
+        danger: false,
+      }).then((ok) => {
+        if (!ok) return;
+        const bookIdx = db.books.findIndex((b) => b.id === loan.bookId);
+        if (bookIdx !== -1) {
+          const book = db.books[bookIdx];
+          const total = Number(book.copiesTotal) || 0;
+          const avail = Number(book.copiesAvailable) || 0;
+          db.books[bookIdx] = {
+            ...book,
+            copiesAvailable: Math.min(total, avail + 1),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+
+        db.loans[loanIdx] = {
+          ...loan,
+          returnedAt: new Date().toISOString(),
         };
-      }
 
-      db.loans[loanIdx] = {
-        ...loan,
-        returnedAt: new Date().toISOString(),
-      };
-
-      window.LMS.storage.writeDb(db);
-      circulationSetError("");
-      renderCurrent();
+        window.LMS.storage.writeDb(db);
+        circulationSetError("");
+        toast("ok", "Returned", "Loan closed and availability updated.");
+        renderCurrent();
+      });
     });
   }
 
@@ -1285,10 +1441,20 @@
     });
 
     $("#resetDemoBtn").on("click", function () {
-      if (!window.confirm("Reset demo data? This will overwrite current localStorage data.")) return;
-      window.LMS.storage.resetDb();
-      booksGoList();
-      renderCurrent();
+      confirmDialog({
+        title: "Reset demo data?",
+        message: "This will overwrite current localStorage data for the app.",
+        okText: "Reset",
+        danger: true,
+      }).then((ok) => {
+        if (!ok) return;
+        window.LMS.storage.resetDb();
+        booksGoList();
+        membersGoList();
+        UI.circulation.fieldErrors = {};
+        toast("warn", "Reset", "Demo data restored.");
+        renderCurrent();
+      });
     });
   }
 

@@ -46,6 +46,24 @@
       </footer>
     </div>
 
+    <!-- Toasts + Modal -->
+    <div class="toastHost" id="toastHost" aria-live="polite" aria-relevant="additions"></div>
+    <div class="modalHost is-hidden" id="modalHost" aria-hidden="true">
+      <div class="modalHost__backdrop" data-action="modal-close" aria-hidden="true"></div>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDesc">
+        <div class="modal__header">
+          <div class="modal__title" id="modalTitle">Confirm</div>
+        </div>
+        <div class="modal__body">
+          <div class="modal__desc" id="modalDesc">Are you sure?</div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" id="modalCancelBtn">Cancel</button>
+          <button type="button" class="btn btn--danger" id="modalOkBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
