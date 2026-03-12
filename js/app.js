@@ -7,6 +7,11 @@
       editId: null,
       error: "",
     },
+    members: {
+      mode: "list", // list | add | edit
+      editId: null,
+      error: "",
+    },
   };
 
   function setActiveRoute(route) {
@@ -251,6 +256,151 @@
     `;
   }
 
+  function renderMembers(db) {
+    const state = UI.members;
+    const members = [...db.members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const editing = state.mode === "edit" && state.editId ? db.members.find((m) => m.id === state.editId) : null;
+
+    const formMember =
+      state.mode === "add"
+        ? { name: "", code: "", email: "", phone: "" }
+        : editing || { name: "", code: "", email: "", phone: "" };
+
+    const showForm = state.mode === "add" || state.mode === "edit";
+
+    return `
+      <section class="card" id="membersScreen">
+        <div class="card__header">
+          <div>
+            <h1 class="card__title">Members</h1>
+            <div class="muted" style="margin-top:6px">Manage member profiles and identifiers.</div>
+          </div>
+          <div class="toolbar">
+            ${
+              showForm
+                ? `
+                  <button type="button" class="btn btn--ghost" data-action="members-cancel">Back to list</button>
+                `
+                : `
+                  <button type="button" class="btn btn--primary" data-action="members-add">+ Add member</button>
+                `
+            }
+          </div>
+        </div>
+
+        <div class="card__body">
+          ${
+            state.error
+              ? `<div class="error" role="alert" style="margin-bottom:12px">${escapeHtml(state.error)}</div>`
+              : ""
+          }
+
+          ${
+            showForm
+              ? `
+                <form id="memberForm" autocomplete="off">
+                  <div class="formGrid">
+                    <div class="col-6">
+                      <div class="field__label">Full name *</div>
+                      <input class="input" name="name" placeholder="e.g. Sita Karki" value="${escapeHtml(formMember.name)}" />
+                    </div>
+                    <div class="col-3">
+                      <div class="field__label">Member code *</div>
+                      <input class="input" name="code" placeholder="e.g. M-1003" value="${escapeHtml(formMember.code)}" />
+                      <div class="field__hint">Must be unique.</div>
+                    </div>
+                    <div class="col-3">
+                      <div class="field__label">Phone</div>
+                      <input class="input" name="phone" inputmode="tel" placeholder="e.g. 98xxxxxxxx" value="${escapeHtml(
+                        formMember.phone
+                      )}" />
+                    </div>
+
+                    <div class="col-6">
+                      <div class="field__label">Email *</div>
+                      <input class="input" name="email" inputmode="email" placeholder="e.g. user@example.com" value="${escapeHtml(
+                        formMember.email
+                      )}" />
+                      <div class="field__hint">Must be unique.</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="field__label">Notes</div>
+                      <input class="input" disabled value="Phase 6: improved UX + richer profiles" />
+                    </div>
+
+                    <div class="col-12">
+                      <div class="row">
+                        <div class="muted">
+                          ${state.mode === "add" ? "Add a member so you can issue books in Phase 4." : "Update member details safely."}
+                        </div>
+                        <div class="toolbar">
+                          <button type="button" class="btn btn--ghost" data-action="members-cancel">Cancel</button>
+                          <button type="submit" class="btn btn--primary">${state.mode === "add" ? "Create member" : "Save changes"}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              `
+              : `
+                <div class="row" style="margin-bottom:12px">
+                  <div class="pill pill--ok">Members: <span class="mono">${members.length}</span></div>
+                  <div class="muted">Tip: Phase 5 will add search and filtering.</div>
+                </div>
+
+                <div class="tableWrap">
+                  <table aria-label="Members table" style="min-width: 820px">
+                    <thead>
+                      <tr>
+                        <th style="min-width:220px">Name</th>
+                        <th style="min-width:140px">Code</th>
+                        <th style="min-width:220px">Email</th>
+                        <th style="min-width:160px">Phone</th>
+                        <th class="right" style="min-width:180px">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${
+                        members.length === 0
+                          ? `<tr><td colspan="5" class="muted">No members yet. Click “Add member”.</td></tr>`
+                          : members
+                              .map((m) => {
+                                const activeLoans = db.loans.filter((l) => l.memberId === m.id && !l.returnedAt).length;
+                                const pillClass = activeLoans > 0 ? "pill--warn" : "pill--ok";
+                                return `
+                                  <tr>
+                                    <td>
+                                      ${escapeHtml(m.name)}
+                                      <span class="sub">Active loans: <span class="pill ${pillClass}"><span class="mono">${activeLoans}</span></span></span>
+                                    </td>
+                                    <td class="mono">${escapeHtml(m.code)}</td>
+                                    <td>${escapeHtml(m.email)}</td>
+                                    <td class="mono">${escapeHtml(m.phone || "-")}</td>
+                                    <td class="right">
+                                      <div class="actions">
+                                        <button type="button" class="btn btn--sm" data-action="members-edit" data-id="${escapeHtml(
+                                          m.id
+                                        )}">Edit</button>
+                                        <button type="button" class="btn btn--sm btn--danger" data-action="members-delete" data-id="${escapeHtml(
+                                          m.id
+                                        )}">Delete</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                `;
+                              })
+                              .join("")
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              `
+          }
+        </div>
+      </section>
+    `;
+  }
+
   function booksSetError(msg) {
     UI.books.error = msg || "";
   }
@@ -279,10 +429,46 @@
     booksSetError("");
   }
 
+  function membersSetError(msg) {
+    UI.members.error = msg || "";
+  }
+
+  function membersGoList() {
+    UI.members.mode = "list";
+    UI.members.editId = null;
+    membersSetError("");
+  }
+
+  function membersGoAdd() {
+    UI.members.mode = "add";
+    UI.members.editId = null;
+    membersSetError("");
+  }
+
+  function membersGoEdit(memberId, db) {
+    const found = db.members.find((m) => m.id === memberId);
+    if (!found) {
+      membersSetError("Member not found.");
+      membersGoList();
+      return;
+    }
+    UI.members.mode = "edit";
+    UI.members.editId = found.id;
+    membersSetError("");
+  }
+
   function normalizeIsbn(isbnRaw) {
     return String(isbnRaw || "")
       .replaceAll(/\s+/g, "")
       .replaceAll(/-/g, "");
+  }
+
+  function normalizeEmail(emailRaw) {
+    return String(emailRaw || "").trim().toLowerCase();
+  }
+
+  function normalizeMemberCode(codeRaw) {
+    return String(codeRaw || "").trim().toUpperCase();
   }
 
   function validateBookInput(input, db, { mode, editId }) {
@@ -307,6 +493,32 @@
     if (isbnTaken) return { ok: false, message: "ISBN already exists. Use a unique ISBN." };
 
     return { ok: true, value: { title, author, isbn, category, copiesTotal } };
+  }
+
+  function validateMemberInput(input, db, { mode, editId }) {
+    const name = String(input.name || "").trim();
+    const code = normalizeMemberCode(input.code);
+    const email = normalizeEmail(input.email);
+    const phone = String(input.phone || "").trim();
+
+    if (!name) return { ok: false, message: "Full name is required." };
+    if (!code) return { ok: false, message: "Member code is required." };
+    if (!email) return { ok: false, message: "Email is required." };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: "Please enter a valid email address." };
+
+    const codeTaken = db.members.some((m) => {
+      if (mode === "edit" && m.id === editId) return false;
+      return normalizeMemberCode(m.code) === code;
+    });
+    if (codeTaken) return { ok: false, message: "Member code already exists. Use a unique code." };
+
+    const emailTaken = db.members.some((m) => {
+      if (mode === "edit" && m.id === editId) return false;
+      return normalizeEmail(m.email) === email;
+    });
+    if (emailTaken) return { ok: false, message: "Email already exists. Use a unique email." };
+
+    return { ok: true, value: { name, code, email, phone } };
   }
 
   function mountBooks($root) {
@@ -427,10 +639,114 @@
     });
   }
 
+  function mountMembers($root) {
+    $root.off("click.members");
+    $root.off("submit.members");
+
+    $root.on("click.members", "[data-action='members-add']", function () {
+      membersGoAdd();
+      renderCurrent();
+    });
+
+    $root.on("click.members", "[data-action='members-cancel']", function () {
+      membersGoList();
+      renderCurrent();
+    });
+
+    $root.on("click.members", "[data-action='members-edit']", function () {
+      const id = String($(this).data("id") || "");
+      const db = window.LMS.storage.readDb();
+      membersGoEdit(id, db);
+      renderCurrent();
+    });
+
+    $root.on("click.members", "[data-action='members-delete']", function () {
+      const id = String($(this).data("id") || "");
+      const db = window.LMS.storage.readDb();
+      const member = db.members.find((m) => m.id === id);
+      if (!member) return;
+
+      const hasActiveLoan = db.loans.some((l) => l.memberId === id && !l.returnedAt);
+      if (hasActiveLoan) {
+        membersSetError("Cannot delete: this member has active loans.");
+        renderCurrent();
+        return;
+      }
+
+      if (!window.confirm(`Delete member "${member.name}"?`)) return;
+      db.members = db.members.filter((m) => m.id !== id);
+      window.LMS.storage.writeDb(db);
+      membersGoList();
+      renderCurrent();
+    });
+
+    $root.on("submit.members", "#memberForm", function (e) {
+      e.preventDefault();
+      const db = window.LMS.storage.readDb();
+      const $form = $(this);
+      const raw = {
+        name: $form.find("[name='name']").val(),
+        code: $form.find("[name='code']").val(),
+        email: $form.find("[name='email']").val(),
+        phone: $form.find("[name='phone']").val(),
+      };
+
+      const mode = UI.members.mode;
+      const editId = UI.members.editId;
+      const v = validateMemberInput(raw, db, { mode, editId });
+      if (!v.ok) {
+        membersSetError(v.message);
+        renderCurrent();
+        return;
+      }
+
+      membersSetError("");
+
+      if (mode === "add") {
+        const member = {
+          id: window.LMS.storage.uid("mem"),
+          name: v.value.name,
+          code: v.value.code,
+          email: v.value.email,
+          phone: v.value.phone,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        db.members.push(member);
+        window.LMS.storage.writeDb(db);
+        membersGoList();
+        renderCurrent();
+        return;
+      }
+
+      if (mode === "edit" && editId) {
+        const idx = db.members.findIndex((m) => m.id === editId);
+        if (idx === -1) {
+          membersSetError("Member not found.");
+          membersGoList();
+          renderCurrent();
+          return;
+        }
+        const existing = db.members[idx];
+        db.members[idx] = {
+          ...existing,
+          name: v.value.name,
+          code: v.value.code,
+          email: v.value.email,
+          phone: v.value.phone,
+          updatedAt: new Date().toISOString(),
+        };
+        window.LMS.storage.writeDb(db);
+        membersGoList();
+        renderCurrent();
+      }
+    });
+  }
+
   function renderRoute(route, db) {
     if (route === "dashboard") return renderDashboard(db);
     if (route === "books") return renderBooks(db);
-    if (route === "members") return renderPlaceholder("Members", "Phase 3: add / edit / delete members with validation + persistence.");
+    if (route === "members") return renderMembers(db);
     if (route === "circulation")
       return renderPlaceholder("Circulation", "Phase 4: issue/return books and track active/overdue loans.");
     return renderPlaceholder("Not found", "Unknown route.");
@@ -454,6 +770,7 @@
   function afterRender(route) {
     const $main = $("#appMain");
     if (route === "books") mountBooks($main);
+    if (route === "members") mountMembers($main);
   }
 
   function renderCurrent() {
